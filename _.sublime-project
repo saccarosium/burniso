@@ -1,0 +1,21 @@
+{
+   "folders":
+   [
+       {
+           "path": "."
+       }
+   ],
+   "build_systems":
+   [
+       {
+           "name": "Build",
+           "shell_cmd": "make",
+           "file_regex": "^(..[^:]*):([0-9]+):?([0-9]+)?:? (.*)$"
+       },
+       {
+           "name": "Run",
+           "shell_cmd": "make && ./burniso",
+           "file_regex": "^(..[^:]*):([0-9]+):?([0-9]+)?:? (.*)$"
+       }
+   ]
+}
