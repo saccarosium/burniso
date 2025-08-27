@@ -1,11 +1,15 @@
 #define _POSIX_C_SOURCE 199309L
 
+#include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
+#include <pthread.h>
 #include <sys/sendfile.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
@@ -15,6 +19,8 @@
 
 #define FAILED_WRITE 134
 #define DISK_TOO_SMALL 135
+
+static bool processing = true;
 
 int32_t validate_image(int32_t *image_fd, const char *path)
 {
@@ -68,7 +74,6 @@ int32_t burn_to_disk(int32_t image_fd, int32_t disk_fd)
 	if (disk_size < image_stats.st_size)
 		return DISK_TOO_SMALL;
 
-	printf("Writing %jd MB to disk", MB(image_stats.st_size));
 	ssize_t nbytes = sendfile(disk_fd, image_fd, NULL, image_stats.st_size);
 	if (nbytes == -1)
 		return errno;
@@ -81,11 +86,32 @@ int32_t burn_to_disk(int32_t image_fd, int32_t disk_fd)
 	return 0;
 }
 
+void *progress_report(void* args)
+{
+	int32_t seconds = 0;
+
+	while (processing) {
+		int32_t mins = seconds / 60;
+		int32_t secs = seconds % 60;
+
+		printf("\rBurning ISO... %d:%02d", mins, secs);
+		fflush(stdout);
+		sleep(1);
+
+		++seconds;
+	}
+
+	printf("\n");
+
+	return NULL;
+}
+
 int main(int argc, char **argv)
 {
 	// TODO(sacca): add flag parsing
 	if (argc < 3) {
 		fprintf(stderr, "Not enogh arguments were passed\n");
+		exit(EXIT_SUCCESS);
 		return 1;
 	}
 
@@ -109,13 +135,21 @@ int main(int argc, char **argv)
 		return err;
 	}
 
-	printf("Burning ISO...\n");
+	pthread_t td = 0;
+	err = pthread_create(&td, NULL, progress_report, NULL);
+	if (err != 0)
+		printf("Burning ISO...\n");
+
+	printf("The syscall won't stop until it finishes. You can't use ctrl+c or ctrl+\\\n");
 	int32_t code = burn_to_disk(image_fd, disk_fd);
 	if (code != 0)
 		display_burn_error(code, image_path, disk_path);
 
 	close(image_fd);
 	close(disk_fd);
+
+	processing = false;
+	pthread_join(td, NULL);
 
 	return code;
 }
